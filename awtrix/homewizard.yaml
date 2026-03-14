@@ -1,0 +1,144 @@
+blueprint:
+  name: Awtrix HomeWizard P1 Meter
+  description: Displays energy data from the HomeWizard P1 meter on the Awtrix display.
+  domain: automation
+  author: zthijs
+  input:
+    awtrix_3:
+      name: Awtrix Display
+      description: Select the target Awtrix display.
+      selector:
+        device:
+          model: "AWTRIX 3"
+    sensor_vermogen:
+      name: Active Power Sensor
+      description: Sensor for current active power (W).
+      default: sensor.p1_meter_vermogen
+      selector:
+        entity:
+          domain: sensor
+    show_vermogen:
+      name: Show Active Power
+      description: Show the current active power on the display.
+      default: true
+      selector:
+        boolean:
+    icon_in:
+      name: Icon
+      description: Enter the icon name or ID.
+      selector:
+        text:
+      default: "8644"
+    push_icon:
+      name: Push Icon
+      description: Icon behavior.
+      selector:
+        select:
+          options:
+            - label: "Icon doesn't move"
+              value: "0"
+            - label: "Icon moves with text and will not appear again"
+              value: "1"
+            - label: "Icon moves with text but appears again when text restarts"
+              value: "2"
+          mode: dropdown
+      default: "2"
+    repeat_text:
+      name: Repeat
+      description: How many times the text should be repeated.
+      default: "2"
+      selector:
+        text:
+    text_case:
+      name: Text Case
+      description: How the text should be displayed.
+      selector:
+        select:
+          options:
+            - label: "Use global setting"
+              value: "0"
+            - label: "Force uppercase"
+              value: "1"
+            - label: "As reported"
+              value: "2"
+          mode: dropdown
+      default: "0"
+    display_type:
+      name: App / Notification
+      description: Show as a custom app (persistent) or a single notification.
+      selector:
+        select:
+          options:
+            - label: "Notification"
+              value: "0"
+            - label: "Custom App"
+              value: "1"
+          mode: dropdown
+      default: "1"
+    background_color:
+      name: Background Color
+      description: Select the background color.
+      selector:
+        color_rgb:
+      default: [0, 0, 0]
+    text_color:
+      name: Text Color
+      description: Select the text color.
+      selector:
+        color_rgb:
+      default: [255, 255, 255]
+mode: queued
+
+trigger:
+  - platform: state
+    entity_id: !input sensor_vermogen
+
+variables:
+  device_id: !input awtrix_3
+  awtrix_3: "{{ iif( device_attr(device_id, 'name_by_user') != none, device_attr(device_id, 'name_by_user'), device_attr(device_id, 'name') ) }}"
+  sensor_vermogen: !input sensor_vermogen
+  show_vermogen: !input show_vermogen
+  repeat_text: !input repeat_text
+  push_icon: !input push_icon
+  icon_in: !input icon_in
+  background_color: !input background_color
+  text_color: !input text_color
+  text_case: !input text_case
+  display_type: !input display_type
+  vermogen_val: "{{ states(sensor_vermogen) | float(0) | round(0) }}"
+  all_text: "{{ vermogen_val | string + 'W' if show_vermogen else '' }}"
+
+action:
+  - if: "{{ display_type == '1' }}"
+    then:
+      - service: mqtt.publish
+        data:
+          qos: 0
+          retain: false
+          topic: "{{awtrix_3}}/custom/p1meter"
+          payload: |-
+            {
+              "text": "{{ all_text }}",
+              "icon": "{{ icon_in }}",
+              "background": {{ background_color }},
+              "color": {{ text_color }},
+              "textCase": {{ text_case }},
+              "pushIcon": {{ push_icon }},
+              "repeat": {{ repeat_text }}
+            }
+    else:
+      - service: mqtt.publish
+        data:
+          qos: 0
+          retain: false
+          topic: "{{awtrix_3}}/notify"
+          payload: |-
+            {
+              "text": "{{ all_text }}",
+              "icon": "{{ icon_in }}",
+              "background": {{ background_color }},
+              "color": {{ text_color }},
+              "textCase": {{ text_case }},
+              "pushIcon": {{ push_icon }},
+              "repeat": {{ repeat_text }}
+            }

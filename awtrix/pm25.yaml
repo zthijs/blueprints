@@ -1,0 +1,81 @@
+blueprint:
+  name: Awtrix PM2.5 Air Quality
+  description: Displays PM2.5 air quality on the Awtrix display with dynamic icons based on the value.
+  domain: automation
+  author: zthijs
+  input:
+    awtrix_3:
+      name: Awtrix Display
+      description: Select the target Awtrix display.
+      selector:
+        device:
+          model: "AWTRIX 3"
+    sensor_pm25:
+      name: PM2.5 Sensor
+      description: Sensor for PM2.5 particulate matter (µg/m³).
+      selector:
+        entity:
+          domain: sensor
+    threshold_warning:
+      name: Warning Threshold (µg/m³)
+      description: PM2.5 value at or above which the warning icon is shown.
+      default: 12
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: µg/m³
+    threshold_danger:
+      name: Danger Threshold (µg/m³)
+      description: PM2.5 value at or above which the danger icon is shown.
+      default: 35
+      selector:
+        number:
+          min: 1
+          max: 500
+          unit_of_measurement: µg/m³
+    background_color:
+      name: Background Color
+      description: Select the background color.
+      selector:
+        color_rgb:
+      default: [0, 0, 0]
+    text_color:
+      name: Text Color
+      description: Select the text color.
+      selector:
+        color_rgb:
+      default: [255, 255, 255]
+
+mode: queued
+
+trigger:
+  - platform: state
+    entity_id: !input sensor_pm25
+
+variables:
+  device_id: !input awtrix_3
+  awtrix_3: "{{ iif( device_attr(device_id, 'name_by_user') != none, device_attr(device_id, 'name_by_user'), device_attr(device_id, 'name') ) }}"
+  sensor_pm25: !input sensor_pm25
+  threshold_warning: !input threshold_warning
+  threshold_danger: !input threshold_danger
+  background_color: !input background_color
+  text_color: !input text_color
+  pm25_val: "{{ states(sensor_pm25) | float(0) | round(1) }}"
+  icon_in: "{{ 605 if states(sensor_pm25) | float(0) >= threshold_danger else 10940 if states(sensor_pm25) | float(0) >= threshold_warning else 606 }}"
+  all_text: "{{ states(sensor_pm25) | float(0) | round(1) }} µg"
+
+action:
+  - service: mqtt.publish
+    data:
+      qos: 0
+      retain: false
+      topic: "{{awtrix_3}}/custom/pm25"
+      payload: |-
+        {
+          "text": "{{ all_text }}",
+          "icon": "{{ icon_in }}",
+          "background": {{ background_color }},
+          "color": {{ text_color }},
+          "pushIcon": 0
+        }
