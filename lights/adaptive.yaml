@@ -1,0 +1,159 @@
+blueprint:
+  name: Adaptive Motion Light
+  description: Adjusts light brightness based on motion detection and a 4-point daily schedule.
+  domain: automation
+  author: zthijs
+
+  input:
+    motion_entity:
+      name: Motion Sensor
+      selector:
+        entity:
+          filter:
+            - domain: binary_sensor
+              device_class: motion
+            - domain: binary_sensor
+              device_class: occupancy
+
+    light_target:
+      name: Light
+      selector:
+        target:
+          entity:
+            domain: light
+
+    normal_brightness:
+      name: Normal brightness
+      description: Brightness percentage used outside the dim window
+      default: 100
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: "%"
+
+    dim_brightness:
+      name: Dim brightness
+      description: Lowest brightness percentage used during the dim period
+      default: 20
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: "%"
+
+    time_1:
+      name: Time 1 - start dimming
+      description: Start transitioning from normal brightness to dim brightness
+      selector:
+        time: {}
+
+    time_2:
+      name: Time 2 - dim level reached
+      description: End of first transition; dim brightness is reached here
+      selector:
+        time: {}
+
+    time_3:
+      name: Time 3 - start reverting
+      description: Start transitioning back from dim brightness to normal brightness
+      selector:
+        time: {}
+
+    time_4:
+      name: Time 4 - revert complete
+      description: End of second transition; normal brightness is reached here
+      selector:
+        time: {}
+
+    no_motion_wait:
+      name: Wait time
+      description: Time to leave the light on after last motion is detected
+      default: 120
+      selector:
+        number:
+          min: 0
+          max: 3600
+          unit_of_measurement: seconds
+
+mode: restart
+max_exceeded: silent
+
+triggers:
+  - trigger: state
+    entity_id: !input motion_entity
+    from: "off"
+    to: "on"
+
+actions:
+  - variables:
+      normal_brightness_input: !input normal_brightness
+      dim_brightness_input: !input dim_brightness
+      time_1_input: !input time_1
+      time_2_input: !input time_2
+      time_3_input: !input time_3
+      time_4_input: !input time_4
+
+      target_brightness_pct: >-
+        {% set normal = normal_brightness_input | int(100) %}
+        {% set dim = dim_brightness_input | int(20) %}
+        {% set now_ts = as_timestamp(now()) %}
+
+        {% set t1 = as_timestamp(today_at(time_1_input)) %}
+        {% set t2 = as_timestamp(today_at(time_2_input)) %}
+        {% if t2 <= t1 %}
+          {% set t2 = t2 + 86400 %}
+        {% endif %}
+
+        {% set t3 = as_timestamp(today_at(time_3_input)) %}
+        {% if t3 <= t2 %}
+          {% set t3 = t3 + 86400 %}
+        {% endif %}
+
+        {% set t4 = as_timestamp(today_at(time_4_input)) %}
+        {% if t4 <= t3 %}
+          {% set t4 = t4 + 86400 %}
+        {% endif %}
+
+        {# If we are before today's Time 1, shift the whole curve back by one day #}
+        {% if now_ts < t1 %}
+          {% set t1 = t1 - 86400 %}
+          {% set t2 = t2 - 86400 %}
+          {% set t3 = t3 - 86400 %}
+          {% set t4 = t4 - 86400 %}
+        {% endif %}
+
+        {% if now_ts < t1 or now_ts > t4 %}
+          {{ normal }}
+        {% elif now_ts <= t2 %}
+          {% set span = (t2 - t1) | float(1) %}
+          {% set progress = (now_ts - t1) / span %}
+          {{ (normal + (dim - normal) * progress) | round(0) | int }}
+        {% elif now_ts <= t3 %}
+          {{ dim }}
+        {% else %}
+          {% set span = (t4 - t3) | float(1) %}
+          {% set progress = (now_ts - t3) / span %}
+          {{ (dim + (normal - dim) * progress) | round(0) | int }}
+        {% endif %}
+
+  - alias: Turn on the light at the calculated brightness
+    action: light.turn_on
+    target: !input light_target
+    data:
+      brightness_pct: "{{ target_brightness_pct }}"
+
+  - alias: Wait until there is no motion
+    wait_for_trigger:
+      - trigger: state
+        entity_id: !input motion_entity
+        from: "on"
+        to: "off"
+
+  - alias: Wait configured time after motion clears
+    delay:
+      seconds: !input no_motion_wait
+
+  - alias: Turn off the light
+    action: light.turn_off
+    target: !input light_target
