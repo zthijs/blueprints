@@ -1,0 +1,132 @@
+blueprint:
+  name: Appliance Done Notification
+  description: >
+    Sends a notification when an appliance (e.g. dishwasher, scooter charger)
+    finishes its cycle, detected via a power sensor.
+  domain: automation
+  author: zthijs
+  input:
+    power_sensor:
+      name: Power Sensor
+      description: Sensor measuring the appliance's real-time power draw (watts).
+      selector:
+        entity:
+          domain: sensor
+
+    start_power:
+      name: Start - Power Threshold
+      description: Power must exceed this value to detect the appliance has started.
+      default: 10
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          unit_of_measurement: W
+          mode: slider
+
+    start_delay:
+      name: Start - Confirmation Delay
+      description: Power must stay above the threshold for this long before triggering start.
+      default: 1
+      selector:
+        number:
+          min: 0.25
+          max: 5
+          step: 0.25
+          unit_of_measurement: min
+          mode: slider
+
+    end_power:
+      name: End - Power Threshold
+      description: Power must drop below this value to detect the appliance has finished.
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 50
+          step: 1
+          unit_of_measurement: W
+          mode: slider
+
+    end_delay:
+      name: End - Confirmation Delay
+      description: Power must stay below the threshold for this long before triggering end.
+      default: 3
+      selector:
+        number:
+          min: 0.25
+          max: 10
+          step: 0.25
+          unit_of_measurement: min
+          mode: slider
+
+    dead_zone:
+      name: Running - Dead Zone
+      description: >
+        Minimum time to wait after start before checking for end. Prevents a false
+        finish trigger if power briefly dips at the beginning of a cycle.
+      default: 5
+      selector:
+        number:
+          min: 0
+          max: 60
+          step: 1
+          unit_of_measurement: min
+          mode: slider
+
+    notify_devices:
+      name: Notify Devices
+      description: Devices that receive the notification when the appliance finishes.
+      selector:
+        device:
+          filter:
+            - integration: mobile_app
+          multiple: true
+
+    end_title:
+      name: Notification Title
+      description: Title of the notification sent when the appliance finishes.
+      default: Appliance Done
+      selector:
+        text: {}
+
+    end_message:
+      name: Notification Message
+      description: Message sent when the appliance finishes.
+      default: Your appliance has finished!
+      selector:
+        text: {}
+
+mode: single
+max_exceeded: silent
+
+trigger:
+  - trigger: numeric_state
+    entity_id: !input power_sensor
+    above: !input start_power
+    for:
+      minutes: !input start_delay
+
+variables:
+  notify_devices: !input notify_devices
+
+action:
+  - delay:
+      minutes: !input dead_zone
+
+  - wait_for_trigger:
+      - trigger: numeric_state
+        entity_id: !input power_sensor
+        below: !input end_power
+        for:
+          minutes: !input end_delay
+
+  - repeat:
+      for_each: "{{ notify_devices }}"
+      sequence:
+        - action: "notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}"
+          data:
+            title: !input end_title
+            message: !input end_message
+          continue_on_error: true

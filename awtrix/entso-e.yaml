@@ -1,0 +1,170 @@
+blueprint:
+  name: Awtrix ENTSO-e Electricity Price
+  description: >
+    Displays the current ENTSO-e electricity price on the Awtrix display with a
+    color-coded hourly price bar along the bottom row so you can see at a glance
+    when energy is cheapest.
+  domain: automation
+  author: zthijs
+  input:
+    awtrix_3:
+      name: Awtrix Display
+      description: Select the target Awtrix display.
+      selector:
+        device:
+          model: "AWTRIX 3"
+    price_sensor:
+      name: Current Price Sensor
+      description: ENTSO-e current electricity market price sensor.
+      default: sensor.current_electricity_market_price
+      selector:
+        entity:
+          domain: sensor
+    average_sensor:
+      name: Average Price Sensor
+      description: >
+        ENTSO-e average electricity price sensor. Must expose a
+        "prices_today" attribute with a list of {time, price} entries.
+      default: sensor.average_electricity_price
+      selector:
+        entity:
+          domain: sensor
+    unit:
+      name: Unit
+      description: Price unit label shown after the value.
+      default: "c/kWh"
+      selector:
+        text: {}
+    unit_multiplier:
+      name: Multiplier
+      description: >
+        Multiplier applied to the raw price before display and color mapping.
+        Use 100 to convert €/kWh to c/kWh (matches the default color thresholds).
+        Use 1 to keep the original unit.
+      default: 100
+      selector:
+        number:
+          min: 1
+          max: 1000
+          step: 1
+    color_matrix_json:
+      name: Color Map
+      description: >
+        JSON mapping of price thresholds (after multiplier) to hex colors.
+        Colors are interpolated between thresholds.
+      default: "{\n  \"0\": \"#00E676\",\n  \"20\": \"#FFEE58\",\n  \"30\": \"#FFA726\",\n  \"40\": \"#EF5350\",\n  \"60\": \"#B71C1C\"\n}"
+      selector:
+        text:
+          multiline: true
+    message_duration:
+      name: Duration
+      description: How long the message stays on screen (seconds). 0 = global app time.
+      default: 30
+      selector:
+        number:
+          min: 0
+          max: 300
+          unit_of_measurement: sec
+          step: 1
+          mode: slider
+    icon:
+      name: Icon
+      description: Icon name or ID to display.
+      default: "8644"
+      selector:
+        text: {}
+    mqtt_topic:
+      name: MQTT Topic
+      description: Unique topic suffix for this app (published to {display}/custom/{topic}).
+      default: "entso_e"
+      selector:
+        text: {}
+
+mode: restart
+
+trigger:
+  - platform: state
+    entity_id: !input price_sensor
+
+variables:
+  device_id: !input awtrix_3
+  awtrix_3: >-
+    {{ iif(
+      device_attr(device_id, 'name_by_user') != none,
+      device_attr(device_id, 'name_by_user'),
+      device_attr(device_id, 'name')
+    ) }}
+  price_sensor: !input price_sensor
+  average_sensor: !input average_sensor
+  unit: !input unit
+  unit_multiplier: !input unit_multiplier
+  color_matrix_json: !input color_matrix_json
+  message_duration: !input message_duration
+  icon: !input icon
+  mqtt_topic: !input mqtt_topic
+  current_price: "{{ states(price_sensor) | float(0) }}"
+  prices_today: "{{ state_attr(average_sensor, 'prices_today') }}"
+  price_text: "{{ (current_price * unit_multiplier) | round(1) ~ unit }}"
+  color_dict: >-
+    {%- set b = color_matrix_json | from_json -%}
+    {%- set ns = namespace(tuples=[]) -%}
+    {%- for k, v in b | items -%}
+      {%- set ns.tuples = ns.tuples + [(k | float, v)] -%}
+    {%- endfor -%}
+    {{ dict.from_keys(ns.tuples) }}
+  payload: |-
+    {%- macro interpolate(dictionary, x) -%}
+      {%- set x = x * unit_multiplier -%}
+      {%- set sorted_keys = dictionary | dictsort -%}
+      {%- set above = sorted_keys | selectattr('0', 'gt', x) | map(attribute='0') | list | first -%}
+      {%- set below = sorted_keys | selectattr('0', 'lt', x) | map(attribute='0') | list | last -%}
+      {%- if above is defined and dictionary[above] == x -%}
+        {{ dictionary[above] }}
+      {%- elif below is defined and dictionary[below] == x -%}
+        {{ dictionary[below] }}
+      {%- elif below is defined and above is defined -%}
+        {%- set lv = dictionary[below] -%}
+        {%- set uv = dictionary[above] -%}
+        {%- set lr = lv[1:3] | int(base=16) -%}
+        {%- set lg = lv[3:5] | int(base=16) -%}
+        {%- set lb = lv[5:7] | int(base=16) -%}
+        {%- set ur = uv[1:3] | int(base=16) -%}
+        {%- set ug = uv[3:5] | int(base=16) -%}
+        {%- set ub = uv[5:7] | int(base=16) -%}
+        {%- set f = (x - below) / (above - below) -%}
+        {{ '#' ~ '%02X' % (((1-f)*lr + f*ur)|int) ~ '%02X' % (((1-f)*lg + f*ug)|int) ~ '%02X' % (((1-f)*lb + f*ub)|int) }}
+      {%- elif below is defined -%}
+        {{ dictionary[below] }}
+      {%- elif above is defined -%}
+        {{ dictionary[above] }}
+      {%- else -%}
+        #FFFFFF
+      {%- endif -%}
+    {%- endmacro -%}
+
+    {%- macro draw_price_bars() -%}
+      {%- if prices_today is not none and prices_today | length > 0 -%}
+        {%- for item in prices_today -%}
+          {"dp": [{{ 8 + loop.index0 }}, 7, "{{ interpolate(color_dict, item['price']) | trim }}"]}
+          {%- if not loop.last %},{% endif %}
+        {%- endfor -%}
+      {%- endif -%}
+    {%- endmacro -%}
+
+    {
+      "draw": [{{ draw_price_bars() }}],
+      "icon": "{{ icon }}",
+      "duration": {{ message_duration }},
+      "text": "{{ price_text }}",
+      "textCase": 2,
+      "color": "{{ interpolate(color_dict, current_price) | trim }}",
+      "lifetimeMode": 1
+    }
+
+action:
+  - service: mqtt.publish
+    data:
+      qos: 0
+      retain: false
+      topic: "{{ awtrix_3 }}/custom/{{ mqtt_topic }}"
+      payload: "{{ payload }}"
