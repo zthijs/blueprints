@@ -4,7 +4,13 @@ A collection of Home Assistant blueprints.
 
 ---
 
-## Media Player
+## AWTRIX
+
+Blueprints for the [AWTRIX 3](https://blueforcer.github.io/awtrix3/) pixel display.
+
+---
+
+### Media Player
 
 Displays the currently playing song title and artist from any Home Assistant media player entity.
 
@@ -18,7 +24,7 @@ Configure the media player entity, icon, text color, and whether to show it as a
 
 ---
 
-## HomeWizard P1 Meter
+### HomeWizard P1 Meter
 
 Displays the current active power usage (W) from a HomeWizard P1 meter.
 
@@ -32,42 +38,88 @@ Updates whenever the power sensor changes state. Supports both custom app and no
 
 ---
 
-## PM2.5 Air Quality
+### Generic Sensor
 
-Displays the current PM2.5 particulate matter value (µg/m³) with a dynamic icon that reflects the air quality level.
+Displays any sensor value on the AWTRIX display with a configurable icon and unit.
 
-![PM2.5 Air Quality](assets/images/pm25.png)
+[![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fzthijs%2Fblueprints%2Frefs%2Fheads%2Fmain%2Fawtrix%2Fsensor.yaml)
 
-[![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fzthijs%2Fblueprints%2Frefs%2Fheads%2Fmain%2Fawtrix%2Fpm25.yaml)
+**File:** `awtrix/sensor.yaml`
 
-**File:** `awtrix/pm25.yaml`
-
-The icon changes automatically based on configurable warning and danger thresholds. Always shown as a custom app.
+Pick any sensor entity, set a unit suffix, icon, text case, repeat count, and background/text colors. Updates on every state change.
 
 ---
 
-## Required Icons
+### ENTSO-e Electricity Price
+
+Displays the current electricity market price with a color-coded hourly price bar along the bottom of the display, so you can see at a glance when energy is cheapest.
+
+[![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fzthijs%2Fblueprints%2Frefs%2Fheads%2Fmain%2Fawtrix%2Fentso-e.yaml)
+
+**File:** `awtrix/entso-e.yaml`
+
+Requires the [ENTSO-e Transparency Platform](https://www.home-assistant.io/integrations/entsoe/) integration. Uses `sensor.current_electricity_market_price` for the live price and `sensor.average_electricity_price` (with its `prices_today` attribute) for the 24-hour bar. Colors are interpolated across a configurable price map (default: green → yellow → orange → red).
+
+---
+
+### Required Icons
 
 Install the following icons on your AWTRIX device via the icon manager before using the blueprints.
 
-### PM2.5 Air Quality (required — hardcoded)
+#### PM2.5 Air Quality (hardcoded)
 
-| ID    | Used when                                      |
-|-------|------------------------------------------------|
-| `606` | Air quality is good (below warning threshold)  |
-| `10940` | Air quality is at warning level              |
-| `605` | Air quality is at danger level                 |
+| ID | Used when |
+|----|-----------|
+| `606` | Air quality is good (below warning threshold) |
+| `10940` | Air quality is at warning level |
+| `605` | Air quality is at danger level |
 
-### HomeWizard P1 Meter (default)
+#### HomeWizard P1 Meter (default, configurable)
 
-| ID     | Description        |
-|--------|--------------------|
-| `8644` | Active power icon  |
+| ID | Description |
+|----|-------------|
+| `8644` | Active power icon |
 
-### Media Player (default)
+#### Media Player (default, configurable)
 
-| ID    | Description         |
-|-------|---------------------|
-| `647` | Music / media icon  |
+| ID | Description |
+|----|-------------|
+| `647` | Music / media icon |
 
-> The default icons for HomeWizard and Media Player can be changed in the blueprint configuration. The PM2.5 icons are hardcoded and must be installed.
+#### ENTSO-e Electricity Price (default, configurable)
+
+| ID | Description |
+|----|-------------|
+| `8644` | Energy / lightning icon |
+
+---
+
+## Presence
+
+---
+
+### Adaptive Presence Light
+
+Adjusts light brightness based on a presence sensor and a 4-point daily schedule. Brightness smoothly transitions from normal to dim and back across the day.
+
+[![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fzthijs%2Fblueprints%2Frefs%2Fheads%2Fmain%2Fpresence%2Fadaptive.yaml)
+
+**File:** `presence/adaptive.yaml`
+
+Configure a presence or occupancy sensor, a light target, normal and dim brightness levels, four time points that define the dim curve, and a wait time before the light turns off after presence clears.
+
+---
+
+## Notifications
+
+---
+
+### Appliance Done
+
+Sends a notification to your phone(s) when an appliance finishes its cycle, detected via a power sensor. Useful for dishwashers, washing machines, scooter chargers, and similar devices.
+
+[![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fzthijs%2Fblueprints%2Frefs%2Fheads%2Fmain%2Fnotifications%2Fappliance.yaml)
+
+**File:** `notifications/appliance.yaml`
+
+Set a start power threshold (to detect when the cycle begins) and an end threshold (to detect when it finishes). A configurable dead zone prevents false end triggers right after startup. Create one automation per appliance with its own sensor, thresholds, and message.

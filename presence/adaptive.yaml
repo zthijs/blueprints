@@ -1,12 +1,12 @@
 blueprint:
-  name: Adaptive Motion Light
-  description: Adjusts light brightness based on motion detection and a 4-point daily schedule.
+  name: Adaptive Presence Light
+  description: Adjusts light brightness based on presence detection and a 4-point daily schedule.
   domain: automation
   author: zthijs
 
   input:
-    motion_entity:
-      name: Motion Sensor
+    presence_entity:
+      name: Presence Sensor
       selector:
         entity:
           filter:
@@ -66,9 +66,9 @@ blueprint:
       selector:
         time: {}
 
-    no_motion_wait:
+    no_presence_wait:
       name: Wait time
-      description: Time to leave the light on after last motion is detected
+      description: Time to leave the light on after presence is no longer detected
       default: 120
       selector:
         number:
@@ -81,7 +81,7 @@ max_exceeded: silent
 
 triggers:
   - trigger: state
-    entity_id: !input motion_entity
+    entity_id: !input presence_entity
     from: "off"
     to: "on"
 
@@ -143,16 +143,16 @@ actions:
     data:
       brightness_pct: "{{ target_brightness_pct }}"
 
-  - alias: Wait until there is no motion
+  - alias: Wait until there is no presence
     wait_for_trigger:
       - trigger: state
-        entity_id: !input motion_entity
+        entity_id: !input presence_entity
         from: "on"
         to: "off"
 
-  - alias: Wait configured time after motion clears
+  - alias: Wait configured time after presence clears
     delay:
-      seconds: !input no_motion_wait
+      seconds: !input no_presence_wait
 
   - alias: Turn off the light
     action: light.turn_off
