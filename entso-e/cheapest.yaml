@@ -1,0 +1,129 @@
+blueprint:
+  name: ENTSO-e Cheapest Hours Switch
+  description: >
+    Turns a socket or switch on during the cheapest X hours within a
+    configurable daily time window, using ENTSO-e electricity prices.
+    Useful for charging devices, running dishwashers, etc. overnight at the
+    lowest possible cost.
+
+    For overnight windows (e.g. 22:00 – 07:00) the blueprint combines
+    today's and tomorrow's prices. If tomorrow's prices are not yet available,
+    only the hours from today's window are used.
+  domain: automation
+  author: zthijs
+  input:
+    socket_entity:
+      name: Socket / Switch
+      description: The switch or socket to control.
+      selector:
+        entity:
+          domain: switch
+
+    average_sensor:
+      name: ENTSO-e Average Price Sensor
+      description: >
+        Sensor that provides hourly prices via its prices_today and
+        prices_tomorrow attributes.
+      default: sensor.average_electricity_price
+      selector:
+        entity:
+          domain: sensor
+
+    window_start:
+      name: Window Start
+      description: Earliest hour the socket is allowed to turn on.
+      selector:
+        time: {}
+
+    window_end:
+      name: Window End
+      description: >
+        Hour at which the socket must be off again. Set later than Window Start
+        for a same-day window (e.g. 09:00 – 17:00), or earlier for an
+        overnight window (e.g. 22:00 – 07:00).
+      selector:
+        time: {}
+
+    cheap_hours:
+      name: Hours to Run
+      description: Number of cheapest hours within the window to keep the socket on.
+      default: 4
+      selector:
+        number:
+          min: 1
+          max: 23
+          step: 1
+          mode: slider
+          unit_of_measurement: hours
+
+mode: single
+max_exceeded: silent
+
+trigger:
+  - platform: time_pattern
+    hours: "/1"
+  - platform: state
+    entity_id: !input average_sensor
+
+variables:
+  average_sensor: !input average_sensor
+  window_start: !input window_start
+  window_end: !input window_end
+  cheap_hours: !input cheap_hours
+  ws: "{{ window_start.split(':')[0] | int }}"
+  we: "{{ window_end.split(':')[0] | int }}"
+  current_hour: "{{ now().hour }}"
+  current_dt: "{{ now().strftime('%Y-%m-%d %H') }}"
+  prices_today: "{{ state_attr(average_sensor, 'prices_today') | default([]) }}"
+  prices_tomorrow: "{{ state_attr(average_sensor, 'prices_tomorrow') | default([]) }}"
+
+  window_prices: >-
+    {%- set pt = prices_today if prices_today is not none else [] -%}
+    {%- set pm = prices_tomorrow if prices_tomorrow is not none else [] -%}
+    {%- set all_prices = pt + pm -%}
+    {%- set ns = namespace(result=[]) -%}
+    {%- for entry in all_prices -%}
+      {%- set h = entry['time'][11:13] | int -%}
+      {%- if ws < we -%}
+        {%- if h >= ws and h < we -%}
+          {%- set ns.result = ns.result + [entry] -%}
+        {%- endif -%}
+      {%- elif ws > we -%}
+        {%- if h >= ws or h < we -%}
+          {%- set ns.result = ns.result + [entry] -%}
+        {%- endif -%}
+      {%- endif -%}
+    {%- endfor -%}
+    {{ ns.result }}
+
+  cheapest_times: >-
+    {%- set sorted = window_prices | sort(attribute='price') -%}
+    {%- set ns = namespace(result=[]) -%}
+    {%- for entry in sorted -%}
+      {%- if loop.index0 < (cheap_hours | int) -%}
+        {%- set ns.result = ns.result + [entry['time'][0:13]] -%}
+      {%- endif -%}
+    {%- endfor -%}
+    {{ ns.result }}
+
+  in_window: >-
+    {%- if ws < we -%}
+      {{ current_hour >= ws and current_hour < we }}
+    {%- elif ws > we -%}
+      {{ current_hour >= ws or current_hour < we }}
+    {%- else -%}
+      {{ false }}
+    {%- endif -%}
+
+  is_cheap_hour: "{{ current_dt in cheapest_times }}"
+
+action:
+  - if: "{{ in_window and is_cheap_hour }}"
+    then:
+      - action: switch.turn_on
+        target:
+          entity_id: !input socket_entity
+    else:
+      - action: switch.turn_off
+        target:
+          entity_id: !input socket_entity

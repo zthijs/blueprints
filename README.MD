@@ -110,6 +110,24 @@ Configure a presence or occupancy sensor, a light target, normal and dim brightn
 
 ---
 
+## ENTSO-e
+
+Blueprints that use [ENTSO-e Transparency Platform](https://www.home-assistant.io/integrations/entsoe/) electricity price data.
+
+---
+
+### Cheapest Hours Switch
+
+Automatically turns a socket or switch on during the cheapest X hours within a configurable daily time window. Re-evaluates every hour so the socket is always on during the lowest-priced slots.
+
+[![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fzthijs%2Fblueprints%2Frefs%2Fheads%2Fmain%2Fentso-e%2Fcheapest.yaml)
+
+**File:** `entso-e/cheapest.yaml`
+
+Set a time window (same-day or overnight), choose how many hours to run, and the blueprint does the rest. Combines `prices_today` and `prices_tomorrow` so overnight windows work correctly. Example uses: scooter charger (22:00–07:00, 3 hours), dishwasher (21:00–06:00, 2 hours), hot water boiler (00:00–06:00, 4 hours).
+
+---
+
 ## Notifications
 
 ---
